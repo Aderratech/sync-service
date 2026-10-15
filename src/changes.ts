@@ -77,12 +77,15 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
     report_id: string; case_number: number; case_code: string; status: string; reporter_user_id: string;
     farm_id: string | null; house_id: string | null; vet_user_id: string | null; vet_name: string | null;
     suspected_code: string | null; confirmed_code: string | null; received_at: Date; confirmed_at: Date | null;
-    completed_at: Date | null; withdrawn_at: Date | null;
+    completed_at: Date | null; withdrawn_at: Date | null; reporter_name: string; animal_code: string;
+    produce_code: string | null; onset: string; medicine_given: string; owner_ok: boolean; created_on_device_at: Date;
   }>(`
     SELECT r.report_id, r.case_number, r.case_code, r.status, r.reporter_user_id, r.farm_id, r.house_id,
            r.vet_user_id, v.name AS vet_name, r.suspected_code, r.confirmed_code, r.received_at,
-           r.confirmed_at, r.completed_at, r.withdrawn_at
+           r.confirmed_at, r.completed_at, r.withdrawn_at, rp.name AS reporter_name, r.animal_code, r.produce_code,
+           r.onset, r.medicine_given, r.owner_ok, r.created_on_device_at
     FROM dbo.report r LEFT JOIN dbo.app_user v ON v.user_id = r.vet_user_id
+    JOIN dbo.app_user rp ON rp.user_id = r.reporter_user_id
     WHERE (r.reporter_user_id = @user OR (@farm IS NOT NULL AND r.farm_id = @farm))
       AND (r.updated_at > @after OR EXISTS (SELECT 1 FROM dbo.case_event e WHERE e.report_id = r.report_id AND e.at > @after))`);
 
@@ -123,6 +126,13 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       confirmed_at: iso(r.confirmed_at),
       completed_at: iso(r.completed_at),
       withdrawn_at: iso(r.withdrawn_at),
+      reporter_name: r.reporter_name,
+      animal_code: r.animal_code,
+      produce_code: r.produce_code,
+      onset: r.onset as ChangesResponse['reports'][number]['onset'] & string,
+      medicine_given: r.medicine_given as ChangesResponse['reports'][number]['medicine_given'] & string,
+      owner_ok: r.owner_ok,
+      created_on_device_at: r.created_on_device_at.toISOString(),
     })),
     events: events.recordset.map((e) => ({
       event_id: lc(e.event_id),
