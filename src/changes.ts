@@ -99,6 +99,36 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       LEFT JOIN dbo.app_user a ON a.user_id = e.actor_user_id
       WHERE (r.reporter_user_id = @user OR (@farm IS NOT NULL AND r.farm_id = @farm)) AND e.at > @after`);
 
+  // What was reported, as the vet sees it: tapped signs, and heard ones once the voice note is processed.
+  const signs = await new sql.Request(pool)
+    .input('user', sql.UniqueIdentifier, user.user_id)
+    .input('farm', sql.UniqueIdentifier, manages ? farm!.farm_id : null)
+    .input('after', sql.DateTime2(3), after)
+    .query<{ report_id: string; sign_code: string; source: string; removed_at: Date | null }>(`
+      SELECT s.report_id, s.sign_code, s.source, s.removed_at
+      FROM dbo.report_sign s JOIN dbo.report r ON r.report_id = s.report_id
+      WHERE (r.reporter_user_id = @user OR (@farm IS NOT NULL AND r.farm_id = @farm))
+        AND (s.added_at > @after OR s.removed_at > @after)`);
+
+  // The conversation (§14 G2): new messages, and messages whose action points were marked done since.
+  const messages = await new sql.Request(pool)
+    .input('user', sql.UniqueIdentifier, user.user_id)
+    .input('farm', sql.UniqueIdentifier, manages ? farm!.farm_id : null)
+    .input('after', sql.DateTime2(3), after)
+    .query<{
+      message_id: string; report_id: string; side: string; author_name: string; text: string | null; lang: string;
+      translated_text: string | null; translated_lang: string | null; sent_at: Date; reply_to_message_id: string | null;
+      items: string | null; media_ids: string | null;
+    }>(`
+      SELECT m.message_id, m.report_id, m.side, a.name AS author_name, m.text, m.lang, m.translated_text,
+             m.translated_lang, m.sent_at, m.reply_to_message_id,
+             (SELECT i.seq, i.quick_response_code, i.done_at FROM dbo.message_item i
+              WHERE i.message_id = m.message_id ORDER BY i.seq FOR JSON PATH) AS items,
+             (SELECT x.media_id FROM dbo.media x WHERE x.message_id = m.message_id FOR JSON PATH) AS media_ids
+      FROM dbo.message m JOIN dbo.report r ON r.report_id = m.report_id JOIN dbo.app_user a ON a.user_id = m.author_user_id
+      WHERE (r.reporter_user_id = @user OR (@farm IS NOT NULL AND r.farm_id = @farm))
+        AND (m.received_at > @after OR EXISTS (SELECT 1 FROM dbo.message_item i WHERE i.message_id = m.message_id AND i.done_at > @after))`);
+
   const notifications = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
     .input('after', sql.DateTime2(3), after)
@@ -141,9 +171,32 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       at: e.at.toISOString(),
       actor_name: e.actor_name,
     })),
-    // The conversation, heard signs, transcripts and media state arrive with the report flow and step 3.
-    messages: [],
-    signs: [],
+    messages: messages.recordset.map((m) => ({
+      message_id: m.message_id.trim(),
+      report_id: m.report_id.trim(),
+      side: m.side as ChangesResponse['messages'][number]['side'],
+      author_name: m.author_name,
+      text: m.text,
+      lang: m.lang.trim() as ChangesResponse['messages'][number]['lang'],
+      translated_text: m.translated_text,
+      translated_lang: (m.translated_lang?.trim() ?? null) as ChangesResponse['messages'][number]['translated_lang'],
+      sent_at: m.sent_at.toISOString(),
+      reply_to_message_id: m.reply_to_message_id?.trim() ?? null,
+      // FOR JSON writes datetime2 without a zone; the database stores UTC.
+      items: (JSON.parse(m.items ?? '[]') as { seq: number; quick_response_code: string; done_at?: string }[]).map((i) => ({
+        seq: i.seq,
+        quick_response_code: i.quick_response_code,
+        done_at: i.done_at ? new Date(i.done_at.endsWith('Z') ? i.done_at : `${i.done_at}Z`).toISOString() : null,
+      })),
+      media_ids: (JSON.parse(m.media_ids ?? '[]') as { media_id: string }[]).map((x) => x.media_id.trim()),
+    })),
+    signs: signs.recordset.map((s) => ({
+      report_id: s.report_id.trim(),
+      sign_code: s.sign_code,
+      source: s.source as ChangesResponse['signs'][number]['source'],
+      removed_at: iso(s.removed_at),
+    })),
+    // Transcripts and media state arrive with uploads and voice notes.
     transcripts: [],
     media: [],
     notifications: notifications.recordset.map((n) => ({
