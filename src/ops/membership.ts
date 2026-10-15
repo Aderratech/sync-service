@@ -50,6 +50,7 @@ export async function memberRequest(tx: sql.Transaction, user: UserRow, op: Op<'
   await notify(tx, {
     userId: farm.manager_user_id,
     type: 'join_request',
+    subjectUserId: user.user_id, // so the manager's phone knows when this request has been decided
     title: `${user.name} wants to join`,
     text: `${farm.name}: approve or decline in Farmers.`,
   });

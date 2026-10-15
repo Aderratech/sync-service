@@ -99,8 +99,8 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
   const notifications = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
     .input('after', sql.DateTime2(3), after)
-    .query<{ notification_id: string; type: string; report_id: string | null; title: string | null; text: string; created_at: Date; read_at: Date | null }>(`
-      SELECT notification_id, type, report_id, title, text, created_at, read_at FROM dbo.notification
+    .query<{ notification_id: string; type: string; report_id: string | null; subject_user_id: string | null; title: string | null; text: string; created_at: Date; read_at: Date | null }>(`
+      SELECT notification_id, type, report_id, subject_user_id, title, text, created_at, read_at FROM dbo.notification
       WHERE user_id = @user AND (created_at > @after OR read_at > @after)`);
 
   return {
@@ -140,6 +140,7 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       notification_id: lc(n.notification_id),
       type: n.type as ChangesResponse['notifications'][number]['type'],
       report_id: n.report_id?.trim() ?? null,
+      subject_user_id: n.subject_user_id && lc(n.subject_user_id),
       title: n.title,
       text: n.text,
       created_at: n.created_at.toISOString(),

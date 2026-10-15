@@ -99,7 +99,9 @@ describe('joining a farm', () => {
 
     const forManager = ChangesResponse.parse(await buildChanges(pool, manager, null));
     expect(forManager.memberships).toContainEqual(expect.objectContaining({ user_id: almaz.user_id.toLowerCase(), state: 'requested', request_note: 'I work in House 1' }));
-    expect(forManager.notifications).toContainEqual(expect.objectContaining({ type: 'join_request', title: 'Almaz Girma wants to join' }));
+    expect(forManager.notifications).toContainEqual(expect.objectContaining({
+      type: 'join_request', title: 'Almaz Girma wants to join', subject_user_id: almaz.user_id.toLowerCase(),
+    }));
 
     const decided = await run(manager, { op: 'member.decide', op_id: opId(), body: { farm_id: farmId, user_id: almaz.user_id, decision: 'approve' } });
     expect(decided[0]!.result).toBe('applied');
