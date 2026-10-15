@@ -152,6 +152,25 @@ describe('joining a farm', () => {
   });
 });
 
+describe('notifications', () => {
+  it("marks the user's own notifications read, and ignores anyone else's", async () => {
+    const { manager, farmId } = await managerWithFarm();
+    const almaz = await farmer();
+    await run(almaz, { op: 'member.request', op_id: opId(), body: { farm_id: farmId } });
+    const mine = ChangesResponse.parse(await buildChanges(pool, manager, null)).notifications;
+    const request = mine.find((n) => n.type === 'join_request')!;
+    expect(request.read_at).toBeNull();
+
+    // Someone else trying to mark it read changes nothing.
+    expect((await run(almaz, { op: 'notification.read', op_id: opId(), body: { notification_ids: [request.notification_id] } }))[0]!.result).toBe('applied');
+    expect(ChangesResponse.parse(await buildChanges(pool, manager, null)).notifications.find((n) => n.notification_id === request.notification_id)!.read_at).toBeNull();
+
+    expect((await run(manager, { op: 'notification.read', op_id: opId(), body: { notification_ids: [request.notification_id] } }))[0]!.result).toBe('applied');
+    const after = ChangesResponse.parse(await buildChanges(pool, manager, null)).notifications.find((n) => n.notification_id === request.notification_id)!;
+    expect(after.read_at).not.toBeNull();
+  });
+});
+
 describe('/changes', () => {
   it('sends the reference lists once, then only when their version changes', async () => {
     const user = await farmer();

@@ -5,6 +5,7 @@ import { sql } from '../db/pool.js';
 import { getUser, type UserRow } from '../users.js';
 import { farmCreate, farmUpdate, houseCreate, houseUpdate } from './farm.js';
 import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
+import { notificationRead } from './notifications.js';
 import { reject, type Outcome } from './outcome.js';
 
 /** SQL Server errors that mean the data broke a rule: FK, unique key, value too long. */
@@ -68,6 +69,7 @@ const HANDLERS: Partial<{
   'member.decide': memberDecide,
   'member.remove': memberRemove,
   'member.assign_houses': memberAssignHouses,
+  'notification.read': notificationRead,
 };
 
 // ── Batch ───────────────────────────────────────────────────────────────────
