@@ -25,7 +25,7 @@ Every request needs `X-Aderra-Contract` (this contract's major or the one before
 
 ## Running locally
 
-Needs Docker Desktop, the .NET 8 SDK, SqlPackage (`dotnet tool install -g microsoft.sqlpackage`), Aderratech/contracts cloned beside this repo, and a GitHub token with `read:packages` for the contracts package.
+Needs Docker Desktop, the .NET 8 SDK, SqlPackage (`dotnet tool install -g microsoft.sqlpackage`), Aderratech/contracts cloned beside this repo, and a GitHub token with `read:packages` in `NODE_AUTH_TOKEN` for the contracts package (see the contracts README).
 
 ```bash
 npm install
