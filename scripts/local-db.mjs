@@ -2,7 +2,8 @@
  * Local database for development and tests: starts SQL Server in Docker,
  * publishes the schema from the contracts repo (../contracts, or
  * ADERRA_CONTRACTS), and creates the `sync_local` login in the aderra_sync
- * role, so the service runs with the same grants as in Azure.
+ * role, so the service runs with the same grants as in Azure. Then loads the
+ * development data in dev-seed.mjs.
  *
  *   npm run db:local            create or update
  *   npm run db:local -- --reset drop the database first
@@ -16,6 +17,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sql from 'mssql';
+import { devSeedSql } from './dev-seed.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const contracts = resolve(process.env.ADERRA_CONTRACTS ?? join(root, '..', 'contracts'));
@@ -77,5 +79,7 @@ const db = await new sql.ConnectionPool(server(DATABASE)).connect();
 await db.query(`
   IF USER_ID('sync_local') IS NULL CREATE USER sync_local FOR LOGIN sync_local;
   IF IS_ROLEMEMBER('aderra_sync', 'sync_local') = 0 ALTER ROLE aderra_sync ADD MEMBER sync_local;`);
+console.log('Loading development data (test places, a test vet, reference versions)…');
+await db.query(devSeedSql());
 await db.close();
 console.log(`Ready: localhost,${PORT} database ${DATABASE}, login sync_local (role aderra_sync).`);

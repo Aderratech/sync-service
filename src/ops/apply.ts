@@ -2,14 +2,10 @@ import type { ErrorCode } from '@aderratech/contracts';
 import { Operation, type OpResult, type SyncResponse } from '@aderratech/contracts/sync';
 import { z } from 'zod';
 import { sql } from '../db/pool.js';
-import type { UserRow } from '../users.js';
-
-/** What applying an operation produced: a result for the phone, and whether to remember it. */
-type Outcome =
-  | { result: 'applied'; server?: Record<string, unknown> }
-  | { result: 'rejected'; code: ErrorCode; reason: string; final: boolean };
-
-const reject = (code: ErrorCode, reason: string, final = true): Outcome => ({ result: 'rejected', code, reason, final });
+import { getUser, type UserRow } from '../users.js';
+import { farmCreate, farmUpdate, houseCreate, houseUpdate } from './farm.js';
+import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
+import { reject, type Outcome } from './outcome.js';
 
 /** SQL Server errors that mean the data broke a rule: FK, unique key, value too long. */
 const CONSTRAINT_ERRORS = [547, 2627, 2601, 8152];
@@ -63,6 +59,15 @@ const HANDLERS: Partial<{
 }> = {
   'user.update': userUpdate,
   'device.register': deviceRegister,
+  'farm.create': farmCreate,
+  'farm.update': farmUpdate,
+  'house.create': houseCreate,
+  'house.update': houseUpdate,
+  'member.request': memberRequest,
+  'member.cancel': memberCancel,
+  'member.decide': memberDecide,
+  'member.remove': memberRemove,
+  'member.assign_houses': memberAssignHouses,
 };
 
 // ── Batch ───────────────────────────────────────────────────────────────────
@@ -153,12 +158,19 @@ function toResult(op_id: string, outcome: Outcome): OpResult {
     : { op_id, result: 'rejected', code: outcome.code, reason: outcome.reason };
 }
 
-/** POST /api/v1/sync: ops apply in the order sent, each in its own transaction. */
+/**
+ * POST /api/v1/sync: ops apply in the order sent, each in its own transaction.
+ * The user is re-read after a user.update, so a role chosen earlier in the
+ * batch counts for the farm.create after it.
+ */
 export async function applyBatch(pool: sql.ConnectionPool, user: UserRow, ops: unknown[]): Promise<SyncResponse> {
   const results: OpResult[] = [];
+  let current = user;
   for (const raw of ops) {
-    const result = await applyOne(pool, user, raw);
-    if (result) results.push(result);
+    const result = await applyOne(pool, current, raw);
+    if (!result) continue;
+    results.push(result);
+    if (result.result === 'applied' && (raw as { op?: string }).op === 'user.update') current = await getUser(pool, current.user_id);
   }
   return { results, server_time: new Date().toISOString() };
 }

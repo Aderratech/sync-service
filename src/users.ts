@@ -30,6 +30,14 @@ async function find(pool: sql.ConnectionPool, identity: Identity): Promise<UserR
   return result.recordset[0] ?? null;
 }
 
+export async function getUser(pool: sql.ConnectionPool, userId: string): Promise<UserRow> {
+  const result = await new sql.Request(pool).input('user', sql.UniqueIdentifier, userId).query<UserRow>(`
+    SELECT user_id, name, phone, language, role, woreda_id, consent_version FROM dbo.app_user WHERE user_id = @user`);
+  const row = result.recordset[0];
+  if (!row) throw new Error(`app_user ${userId} not found`);
+  return row;
+}
+
 /**
  * The caller's app_user row, created at first sign-in (sign-up and sign-in are
  * one step). The role stays NULL until first run sends user.update.

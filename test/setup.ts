@@ -28,18 +28,8 @@ export const newIdentity = (name = 'Almaz Girma'): Identity => ({
   provider: 'google', subject: `dev-test-${randomUUID()}`, name, email: null,
 });
 
-/** Ids of the test places, created once: one region › zone › woreda. */
-export const PLACE = { region: 99001, zone: 99002, woreda: 99003 };
-
-export async function ensurePlaces(admin: sql.ConnectionPool): Promise<void> {
-  await admin.query(`
-    IF NOT EXISTS (SELECT 1 FROM dbo.region WHERE region_id = ${PLACE.region})
-      INSERT dbo.region (region_id, name_en) VALUES (${PLACE.region}, N'Test region');
-    IF NOT EXISTS (SELECT 1 FROM dbo.zone WHERE zone_id = ${PLACE.zone})
-      INSERT dbo.zone (zone_id, region_id, name_en) VALUES (${PLACE.zone}, ${PLACE.region}, N'Test zone');
-    IF NOT EXISTS (SELECT 1 FROM dbo.woreda WHERE woreda_id = ${PLACE.woreda})
-      INSERT dbo.woreda (woreda_id, zone_id, name_en) VALUES (${PLACE.woreda}, ${PLACE.zone}, N'Test woreda');`);
-}
+/** Places from the development seed (scripts/dev-seed.mjs, loaded by `npm run db:local`): Lume woreda. */
+export const PLACE = { woreda: 1002, kebele: 100201 };
 
 const crockford = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 /** A random ULID-shaped op id. */

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MeResponse, SyncResponse } from '@aderratech/contracts/sync';
-import { adminPool, ensurePlaces, newIdentity, opId, PLACE } from './setup.js';
+import { adminPool, newIdentity, opId, PLACE } from './setup.js';
 import { closePool, getPool, type sql } from '../src/db/pool.js';
 import { buildMe } from '../src/me.js';
 import { applyBatch } from '../src/ops/apply.js';
@@ -12,7 +12,6 @@ let admin: sql.ConnectionPool;
 
 beforeAll(async () => {
   admin = await adminPool();
-  await ensurePlaces(admin);
   pool = await getPool();
 });
 
