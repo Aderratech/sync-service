@@ -128,7 +128,7 @@ export async function memberDecide(tx: sql.Transaction, user: UserRow, op: Op<'m
     userId: b.user_id,
     type: 'membership_decided',
     title: approve ? `You're in ${current.farm_name}` : 'Your request was declined',
-    text: approve ? "Your reports now go to the farm's vet." : `${current.farm_name} declined your request to join.`,
+    text: approve ? "The cases you report now go to the farm's vet." : `${current.farm_name} declined your request to join.`,
   });
   return applied();
 }
