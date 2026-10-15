@@ -1,0 +1,17 @@
+# A local copy of the Aderra database for development and tests only.
+# `npm run db:local` starts it and builds the schema from ../contracts.
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aderra-sql-local
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${LOCAL_SA_PASSWORD:-Local-only-Sa-2026!}"
+      MSSQL_PID: Developer
+    ports:
+      - "14330:1433"
+    volumes:
+      - aderra-sql-local:/var/opt/mssql
+
+volumes:
+  aderra-sql-local:

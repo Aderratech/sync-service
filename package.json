@@ -1,0 +1,34 @@
+{
+  "name": "aderra-sync-service",
+  "version": "0.1.0",
+  "description": "Aderra sync service: the mobile app's only server. Azure Functions (TypeScript) writing to the Aderra SQL database in Fabric.",
+  "author": "Aderra",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/functions/*.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "npm run build && func start",
+    "db:local": "node scripts/local-db.mjs"
+  },
+  "dependencies": {
+    "@aderratech/contracts": "0.1.0",
+    "@azure/functions": "4.16.5",
+    "@azure/identity": "4.14.0",
+    "mssql": "12.7.6",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/mssql": "12.3.0",
+    "@types/node": "^22.0.0",
+    "azure-functions-core-tools": "4.16.0",
+    "typescript": "~5.7.2",
+    "vitest": "5.0.4"
+  }
+}

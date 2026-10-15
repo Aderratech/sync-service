@@ -1,0 +1,21 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "",
+
+    "SQL_SERVER": "localhost",
+    "SQL_PORT": "14330",
+    "SQL_DATABASE": "aderra_ops",
+    "SQL_AUTH": "sql",
+    "SQL_USER": "sync_local",
+    "SQL_PASSWORD": "Local-only-Sync-2026!",
+    "SQL_TRUST_CERT": "1",
+
+    "ADERRA_DEV_AUTH": "1",
+    "MIN_APP_BUILD": "1"
+  },
+  "Host": {
+    "LocalHttpPort": 7071
+  }
+}
