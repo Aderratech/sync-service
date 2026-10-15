@@ -108,7 +108,7 @@ describe('joining a farm', () => {
 
     const forFarmer = ChangesResponse.parse(await buildChanges(pool, almaz, null));
     expect(forFarmer.farm).toMatchObject({ farm_id: farmId, join_code: null }); // the code is the manager's to share
-    expect(forFarmer.memberships).toEqual([expect.objectContaining({ state: 'active', house_ids: [houseId] })]);
+    expect(forFarmer.memberships).toEqual([expect.objectContaining({ state: 'active', house_ids: [houseId], app_joined_at: expect.any(String) })]);
     expect(forFarmer.notifications).toContainEqual(expect.objectContaining({ type: 'membership_decided', title: "You're in Sara Poultry" }));
   });
 

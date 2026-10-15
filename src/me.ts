@@ -40,8 +40,8 @@ export async function membershipsFor(pool: sql.ConnectionPool, user: UserRow, ma
   const members = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
     .input('farm', sql.UniqueIdentifier, managedFarmId)
-    .query<{ farm_id: string; user_id: string; name: string; phone: string | null; state: string; request_note: string | null; requested_at: Date; house_ids: string | null }>(`
-      SELECT m.farm_id, m.user_id, u.name, u.phone, m.state, m.request_note, m.requested_at,
+    .query<{ farm_id: string; user_id: string; name: string; phone: string | null; state: string; request_note: string | null; requested_at: Date; app_joined_at: Date; house_ids: string | null }>(`
+      SELECT m.farm_id, m.user_id, u.name, u.phone, m.state, m.request_note, m.requested_at, u.created_at AS app_joined_at,
              (SELECT STRING_AGG(CONVERT(CHAR(36), h.house_id), ',') FROM dbo.farm_member_house h
                WHERE h.farm_id = m.farm_id AND h.user_id = m.user_id AND h.removed_at IS NULL) AS house_ids
       FROM dbo.farm_member m JOIN dbo.app_user u ON u.user_id = m.user_id
@@ -55,6 +55,7 @@ export async function membershipsFor(pool: sql.ConnectionPool, user: UserRow, ma
     state: m.state as MeResponse['memberships'][number]['state'],
     request_note: m.request_note,
     requested_at: m.requested_at.toISOString(),
+    app_joined_at: m.app_joined_at.toISOString(),
     house_ids: m.house_ids ? m.house_ids.split(',').map((id) => lc(id.trim())) : [],
   }));
 }
