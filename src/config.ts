@@ -4,11 +4,26 @@ import type { MeResponse } from '@aderratech/contracts/sync';
 export const inAzure = (): boolean => Boolean(process.env.WEBSITE_INSTANCE_ID);
 
 /**
- * Local development only: accept "dev:" session tokens instead of App Service
- * authentication. Refused in Azure even if the setting is copied there.
+ * Test sign-in: accept "dev:" session tokens instead of App Service authentication. Locally with
+ * ADERRA_DEV_AUTH=1. In Azure only for the interim test service, and only with ADERRA_DEV_AUTH_KEY set:
+ * each request must then carry that key (identity.ts), so a token alone signs no one in.
  */
 export function devAuthEnabled(): boolean {
-  return process.env.ADERRA_DEV_AUTH === '1' && !inAzure();
+  return process.env.ADERRA_DEV_AUTH === '1' && (!inAzure() || Boolean(devAuthKey()));
+}
+
+/** The test key the interim test app sends in X-Aderra-Test-Key; at least 32 characters, else unset. */
+export function devAuthKey(): string | null {
+  const key = process.env.ADERRA_DEV_AUTH_KEY ?? '';
+  return key.length >= 32 ? key : null;
+}
+
+/**
+ * App Service authentication strips X-MS-CLIENT-PRINCIPAL headers that callers send, but only while it is
+ * on. Without it, those headers are not proof of anyone, so in Azure they count only when it is on.
+ */
+export function appServiceAuthOn(): boolean {
+  return !inAzure() || (process.env.WEBSITE_AUTH_ENABLED ?? '').toLowerCase() === 'true';
 }
 
 function int(name: string, fallback: number): number {

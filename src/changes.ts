@@ -125,6 +125,16 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       WHERE (r.reporter_user_id = @user OR r.farm_id IN (SELECT farm_id FROM dbo.farm WHERE manager_user_id = @user))
         AND (m.received_at > @after OR EXISTS (SELECT 1 FROM dbo.message_item i WHERE i.message_id = m.message_id AND i.done_at > @after))`);
 
+  // Photos and audio of visible cases (§14 G2), so another account's phone can show them with a read link.
+  const media = await new sql.Request(pool)
+    .input('user', sql.UniqueIdentifier, user.user_id)
+    .input('after', sql.DateTime2(3), after)
+    .query<{ media_id: string; report_id: string; kind: string; seq: number; content_type: string; uploaded_at: Date | null }>(`
+      SELECT m.media_id, m.report_id, m.kind, m.seq, m.content_type, m.uploaded_at
+      FROM dbo.media m JOIN dbo.report r ON r.report_id = m.report_id
+      WHERE (r.reporter_user_id = @user OR r.farm_id IN (SELECT farm_id FROM dbo.farm WHERE manager_user_id = @user))
+        AND (m.uploaded_at > @after OR r.received_at > @after OR r.updated_at > @after)`);
+
   const notifications = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
     .input('after', sql.DateTime2(3), after)
@@ -192,9 +202,16 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
       source: s.source as ChangesResponse['signs'][number]['source'],
       removed_at: iso(s.removed_at),
     })),
-    // Transcripts and media state arrive with uploads and voice notes.
+    // Transcripts arrive with voice notes.
     transcripts: [],
-    media: [],
+    media: media.recordset.map((m) => ({
+      media_id: m.media_id.trim(),
+      report_id: m.report_id.trim(),
+      uploaded_at: iso(m.uploaded_at),
+      kind: m.kind as ChangesResponse['media'][number]['kind'],
+      seq: m.seq,
+      content_type: m.content_type as ChangesResponse['media'][number]['content_type'],
+    })),
     notifications: notifications.recordset.map((n) => ({
       notification_id: lc(n.notification_id),
       type: n.type as ChangesResponse['notifications'][number]['type'],

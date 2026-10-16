@@ -5,6 +5,7 @@ import { sql } from '../db/pool.js';
 import { getUser, type UserRow } from '../users.js';
 import { farmCreate, farmRegister, farmUpdate, houseCreate, houseUpdate } from './farm.js';
 import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
+import { mediaConfirm } from './media.js';
 import { notificationRead } from './notifications.js';
 import { reportCreate } from './report.js';
 import { reject, type Outcome } from './outcome.js';
@@ -85,6 +86,7 @@ const HANDLERS: Partial<{
   'member.remove': memberRemove,
   'member.assign_houses': memberAssignHouses,
   'notification.read': notificationRead,
+  'media.confirm': mediaConfirm,
   'report.create': reportCreate,
 };
 

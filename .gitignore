@@ -11,5 +11,8 @@ local.settings.json
 # Local database tooling output
 .local-db/
 
+# Local media store (MEDIA_STORE=local)
+.media/
+
 .DS_Store
 Thumbs.db

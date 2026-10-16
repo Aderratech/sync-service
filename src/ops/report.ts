@@ -9,8 +9,14 @@ type ReportCreate = Extract<Operation, { op: 'report.create' }>;
 
 const same = (a: string | null | undefined, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
 
-/** Media files land at this path in the lakehouse Files area (docs/sync-service.md). */
-export const mediaPath = (reportId: string, mediaId: string) => `Files/global_ingress_uploads/${reportId}/${mediaId}`;
+/**
+ * Media files land at this path in the lakehouse Files area (docs/sync-service.md). The interim test
+ * service keeps them apart under MEDIA_FOLDER (e.g. Files/interim/uploads/…).
+ */
+export const mediaPath = (reportId: string, mediaId: string) => {
+  const folder = process.env.MEDIA_FOLDER?.trim();
+  return folder ? `Files/${folder}/uploads/${reportId}/${mediaId}` : `Files/global_ingress_uploads/${reportId}/${mediaId}`;
+};
 
 type Place = { farm_name: string | null; house_name: string | null; animal_code: string; produce_code: string | null; kebele_id: number; woreda_id: number };
 
