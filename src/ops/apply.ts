@@ -6,6 +6,7 @@ import { getUser, type UserRow } from '../users.js';
 import { farmCreate, farmRegister, farmUpdate, houseCreate, houseUpdate } from './farm.js';
 import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
 import { mediaConfirm } from './media.js';
+import { farmVetRemove, farmVetRequest } from '../vets.js';
 import { notificationRead } from './notifications.js';
 import { reportCreate } from './report.js';
 import { reject, type Outcome } from './outcome.js';
@@ -77,6 +78,8 @@ const HANDLERS: Partial<{
   'device.register': deviceRegister,
   'farm.create': farmCreate,
   'farm.register': farmRegister,
+  'farm.vet_request': farmVetRequest,
+  'farm.vet_remove': farmVetRemove,
   'farm.update': farmUpdate,
   'house.create': houseCreate,
   'house.update': houseUpdate,

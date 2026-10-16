@@ -3,6 +3,7 @@ import { clientConfig } from './config.js';
 import { sql } from './db/pool.js';
 import { lc } from './ops/outcome.js';
 import type { UserRow } from './users.js';
+import { vetsOfFarms } from './vets.js';
 
 type FarmRow = { farm_id: string; name: string; farm_code: string; join_code: string; kebele_id: number; phone: string | null; manager_user_id: string };
 type Farm = NonNullable<MeResponse['farm']>;
@@ -21,6 +22,7 @@ export async function farmsFor(pool: sql.ConnectionPool, user: UserRow): Promise
     .query<{ farm_id: string; house_id: string; name: string; animal_code: string; produce_code: string | null; active: boolean }>(`
       SELECT farm_id, house_id, name, animal_code, produce_code, active FROM dbo.farm_house
       WHERE farm_id IN (SELECT CAST(value AS UNIQUEIDENTIFIER) FROM OPENJSON(@ids)) ORDER BY created_at`);
+  const vets = await vetsOfFarms(pool, farms.recordset.map((f) => lc(f.farm_id)));
   return farms.recordset.map((farm) => {
     const manages = lc(farm.manager_user_id) === lc(user.user_id);
     return {
@@ -32,6 +34,7 @@ export async function farmsFor(pool: sql.ConnectionPool, user: UserRow): Promise
       kebele_id: farm.kebele_id,
       phone: farm.phone,
       manages,
+      vet: vets.get(lc(farm.farm_id)) ?? null,
       houses: houses.recordset
         .filter((h) => lc(h.farm_id) === lc(farm.farm_id))
         .map(({ farm_id: _farm, ...h }) => ({ ...h, house_id: lc(h.house_id) })),

@@ -1,6 +1,7 @@
 import type { OfficerFarmsResponse } from '@aderratech/contracts/sync';
 import { sql } from './db/pool.js';
 import { woredasOf } from './me.js';
+import { vetsOfFarms } from './vets.js';
 import { lc } from './ops/outcome.js';
 import type { UserRow } from './users.js';
 
@@ -36,6 +37,7 @@ export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, quer
          WHERE EXISTS (SELECT 1 FROM dbo.officer_farm o WHERE o.farm_id = f.farm_id AND o.officer_user_id = @user AND o.removed_at IS NULL)
          ORDER BY f.name`);
   const ids = farms.recordset.map((f) => lc(f.farm_id));
+  const vets = await vetsOfFarms(pool, ids);
   const houses = ids.length
     ? (await new sql.Request(pool).input('ids', sql.NVarChar(sql.MAX), JSON.stringify(ids)).query<HouseRow>(`
         SELECT farm_id, house_id, name, animal_code, produce_code, active FROM dbo.farm_house
@@ -50,6 +52,7 @@ export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, quer
       mine: f.mine,
       manager_invited: f.manager_invited,
       editable: f.editable,
+      vet: vets.get(lc(f.farm_id)) ?? null,
       houses: houses
         .filter((h) => lc(h.farm_id) === lc(f.farm_id))
         .map((h) => ({ house_id: lc(h.house_id), name: h.name, animal_code: h.animal_code, produce_code: h.produce_code, active: h.active })),

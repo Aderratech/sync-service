@@ -2,6 +2,7 @@ import { REFERENCE_ROWS, type ChangesResponse, type ReferenceTable } from '@ader
 import { clientConfig } from './config.js';
 import { sql } from './db/pool.js';
 import { farmsFor, membershipsFor } from './me.js';
+import { tellVetAnswers } from './vets.js';
 import { lc } from './ops/outcome.js';
 import type { UserRow } from './users.js';
 
@@ -65,6 +66,7 @@ export async function buildChanges(pool: sql.ConnectionPool, user: UserRow, sinc
   const cursor = readCursor(since);
   const after = cursor.t ? new Date(Date.parse(cursor.t) - OVERLAP_MS) : new Date(0);
 
+  await tellVetAnswers(pool, user);
   const farms = await farmsFor(pool, user);
   const { reference, versions } = await referenceChanges(pool, cursor.v);
 

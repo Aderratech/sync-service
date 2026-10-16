@@ -3,6 +3,7 @@ import { endpoint, fail, json } from '../http.js';
 import { lc } from '../ops/outcome.js';
 import { sql } from '../db/pool.js';
 import { officerFarms } from '../officer.js';
+import { mayChooseVet, vetsForFarm } from '../vets.js';
 import { ensureUser } from '../users.js';
 
 /**
@@ -36,5 +37,19 @@ app.http('officerFarms', {
     const user = await ensureUser(pool, identity, 'en');
     if (user.role !== 'extension_officer') return fail(403, 'FORBIDDEN', 'For extension officers.');
     return json(200, await officerFarms(pool, user, request.query.get('q') ?? ''));
+  }),
+});
+
+/** GET /api/v1/farms/vets?farm_id=: the vets a farm can ask (those serving its woreda), for whoever chooses its vet. */
+app.http('farmVets', {
+  methods: ['GET'],
+  route: 'v1/farms/vets',
+  authLevel: 'anonymous',
+  handler: endpoint(async ({ request, identity, pool }) => {
+    const farmId = request.query.get('farm_id') ?? '';
+    if (!/^[0-9a-f-]{36}$/i.test(farmId)) return fail(400, 'INVALID_PAYLOAD', 'Which farm?');
+    const user = await ensureUser(pool, identity, 'en');
+    if (!(await mayChooseVet(pool, user, farmId))) return fail(403, 'FORBIDDEN', "Only the farm's manager can choose its vet.");
+    return json(200, { vets: await vetsForFarm(pool, user, farmId) });
   }),
 });
