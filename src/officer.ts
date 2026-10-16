@@ -4,7 +4,7 @@ import { woredasOf } from './me.js';
 import { lc } from './ops/outcome.js';
 import type { UserRow } from './users.js';
 
-type FarmRow = { farm_id: string; name: string; farm_code: string; kebele_id: number; mine: boolean; manager_invited: boolean };
+type FarmRow = { farm_id: string; name: string; farm_code: string; kebele_id: number; mine: boolean; manager_invited: boolean; editable: boolean };
 type HouseRow = { farm_id: string; house_id: string; name: string; animal_code: string; produce_code: string | null; active: boolean };
 
 /** `%`, `_` and `[` match literally in a LIKE pattern. */
@@ -22,7 +22,9 @@ export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, quer
     CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.officer_farm o WHERE o.farm_id = f.farm_id AND o.officer_user_id = @user AND o.removed_at IS NULL)
               THEN 1 ELSE 0 END AS BIT) AS mine,
     CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.farm_invite i WHERE i.farm_id = f.farm_id AND i.claimed_at IS NULL)
-              THEN 1 ELSE 0 END AS BIT) AS manager_invited`;
+              THEN 1 ELSE 0 END AS BIT) AS manager_invited,
+    CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.farm_invite i WHERE i.farm_id = f.farm_id AND i.claimed_at IS NULL AND i.invited_by = @user)
+              THEN 1 ELSE 0 END AS BIT) AS editable`;
   const farms = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
     .input('woredas', sql.NVarChar(sql.MAX), JSON.stringify(await woredasOf(pool, user)))
@@ -47,6 +49,7 @@ export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, quer
       kebele_id: f.kebele_id,
       mine: f.mine,
       manager_invited: f.manager_invited,
+      editable: f.editable,
       houses: houses
         .filter((h) => lc(h.farm_id) === lc(f.farm_id))
         .map((h) => ({ house_id: lc(h.house_id), name: h.name, animal_code: h.animal_code, produce_code: h.produce_code, active: h.active })),

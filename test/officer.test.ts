@@ -144,6 +144,29 @@ describe('an officer registers a farm with its case', () => {
     expect(officerEdit[0]).toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
   });
 
+  it('lets the officer edit a farm he registered until its manager signs in, and no one else', async () => {
+    const me = await officer();
+    const email = testEmail();
+    const r = registerOp(email);
+    await run(me, r.op);
+    expect((await officerFarms(pool, me, '')).farms).toEqual([expect.objectContaining({ farm_id: r.farmId, editable: true })]);
+
+    const fix = await run(me,
+      { op: 'farm.update', op_id: opId(), farm_id: r.farmId, body: { name: 'Abebe Layers' } },
+      { op: 'house.update', op_id: opId(), house_id: r.houseId, body: { name: 'Layer house', produce_code: 'broilers' } });
+    expect(fix.map((x) => x.result)).toEqual(['applied', 'applied']);
+    const other = await officer();
+    expect((await run(other, { op: 'farm.update', op_id: opId(), farm_id: r.farmId, body: { name: 'Mine' } }))[0])
+      .toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
+    expect((await run(me, { op: 'farm.update', op_id: opId(), farm_id: r.farmId, body: { kebele_id: 100101 } }))[0])
+      .toMatchObject({ result: 'rejected', code: 'OUTSIDE_WOREDA' });
+
+    await ensureUser(pool, { ...newIdentity('Abebe Kebede'), email }, 'en');
+    expect((await officerFarms(pool, me, '')).farms).toEqual([expect.objectContaining({ name: 'Abebe Layers', editable: false })]);
+    expect((await run(me, { op: 'farm.update', op_id: opId(), farm_id: r.farmId, body: { name: 'Too late' } }))[0])
+      .toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
+  });
+
   it('makes a farm manager already on Aderra the manager straight away, even of a second farm', async () => {
     const email = testEmail();
     const identity = { ...newIdentity('Hana Bekele'), email };
