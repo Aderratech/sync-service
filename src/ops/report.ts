@@ -65,7 +65,17 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
 }
 
 /** The farm's current vet, else the woreda's (vet_farm), as of today. */
-async function findVet(tx: sql.Transaction, farmId: string | null, woredaId: number) {
+async function findVet(tx: sql.Transaction, farmId: string | null, woredaId: number, user: UserRow) {
+  // On the live database, a test-button account's cases go only to the test vet (TEST_VET_EMAIL), never to
+  // the farm's or woreda's real vet.
+  const testVet = process.env.TEST_VET_EMAIL?.trim().toLowerCase();
+  if (user.is_test && testVet) {
+    const t = await new sql.Request(tx).input('email', sql.NVarChar(320), testVet)
+      .query<{ vet_user_id: string; vet_email: string; vet_name: string }>(`
+        SELECT TOP 1 user_id AS vet_user_id, email AS vet_email, name AS vet_name FROM dbo.app_user
+        WHERE role = 'vet' AND LOWER(email) = @email`);
+    return t.recordset[0] ?? null;
+  }
   const r = await new sql.Request(tx)
     .input('farm', sql.UniqueIdentifier, farmId)
     .input('woreda', sql.Int, woredaId)
@@ -87,7 +97,7 @@ async function findVet(tx: sql.Transaction, farmId: string | null, woredaId: num
 export async function reportCreate(tx: sql.Transaction, user: UserRow, op: ReportCreate): Promise<Outcome> {
   const place = await checkPlace(tx, user, op);
   if ('result' in place) return place;
-  const vet = await findVet(tx, op.body.farm_id, place.woreda_id);
+  const vet = await findVet(tx, op.body.farm_id, place.woreda_id, user);
   // Retryable: the data team assigns a vet, and the phone keeps the case queued until then.
   if (!vet) return reject('NO_VET_ASSIGNED', 'Waiting for a vet to be assigned to this farm.', false);
 

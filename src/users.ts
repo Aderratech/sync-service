@@ -11,10 +11,13 @@ export type UserRow = {
   role: string | null;
   woreda_id: number | null;
   consent_version: string | null;
+  /** Signed in with a test button (identity_subject dev-…): test data, routed to the test vet. */
+  is_test: boolean;
 };
 
 const SELECT_USER = `
-  SELECT user_id, name, phone, language, role, woreda_id, consent_version
+  SELECT user_id, name, phone, language, role, woreda_id, consent_version,
+    CAST(CASE WHEN identity_subject LIKE 'dev-%' THEN 1 ELSE 0 END AS BIT) AS is_test
   FROM dbo.app_user WHERE identity_provider = @provider AND identity_subject = @subject`;
 
 /** The language a new user starts in: what the phone asked for, else English. */
@@ -33,7 +36,8 @@ async function find(pool: sql.ConnectionPool, identity: Identity): Promise<UserR
 
 export async function getUser(pool: sql.ConnectionPool, userId: string): Promise<UserRow> {
   const result = await new sql.Request(pool).input('user', sql.UniqueIdentifier, userId).query<UserRow>(`
-    SELECT user_id, name, phone, language, role, woreda_id, consent_version FROM dbo.app_user WHERE user_id = @user`);
+    SELECT user_id, name, phone, language, role, woreda_id, consent_version,
+    CAST(CASE WHEN identity_subject LIKE 'dev-%' THEN 1 ELSE 0 END AS BIT) AS is_test FROM dbo.app_user WHERE user_id = @user`);
   const row = result.recordset[0];
   if (!row) throw new Error(`app_user ${userId} not found`);
   return row;
@@ -87,8 +91,10 @@ export async function ensureUser(pool: sql.ConnectionPool, identity: Identity, l
       .input('subject', sql.NVarChar(256), identity.subject)
       .input('name', sql.NVarChar(200), identity.name?.trim() || 'Aderra user')
       .input('language', sql.Char(2), language)
-      .query(`INSERT INTO dbo.app_user (identity_provider, identity_subject, name, language, role)
-              VALUES (@provider, @subject, @name, @language, NULL)`);
+      // Test-button accounts are test data ('seed'), so they can be told apart and removed.
+      .input('origin', sql.VarChar(5), identity.subject.startsWith('dev-') ? 'seed' : 'phone')
+      .query(`INSERT INTO dbo.app_user (identity_provider, identity_subject, name, language, role, origin)
+              VALUES (@provider, @subject, @name, @language, NULL, @origin)`);
   } catch (error) {
     // Two first requests at once: the other one created the row (uq_app_user_identity).
     if (!(error instanceof sql.RequestError && error.number === 2627)) throw error;

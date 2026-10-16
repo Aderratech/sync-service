@@ -145,6 +145,28 @@ describe('report.create', () => {
     expect(row).toEqual({ lat: null, lon: null, owner_ok: false });
   });
 
+  it("sends a test account's case to the test vet only, when TEST_VET_EMAIL is set", async () => {
+    // A second vet who covers the test woreda, so the woreda's usual vet is not the test vet.
+    await admin.query(`
+      IF NOT EXISTS (SELECT 1 FROM dbo.app_user WHERE email = 'dev-test-testvet@aderra.test')
+        INSERT dbo.app_user (identity_provider, identity_subject, email, name, language, role)
+        VALUES ('entra', 'dev-test-testvet', 'dev-test-testvet@aderra.test', 'Test Vet', 'en', 'vet');`);
+    const { manager, farmId, houses } = await farmWithHouses();
+    expect(manager.is_test).toBe(true);
+    process.env.TEST_VET_EMAIL = 'DEV-TEST-TESTVET@aderra.test';
+    try {
+      const op = reportOp(farmId, houses[0]!);
+      expect((await run(manager, op))[0]).toMatchObject({ result: 'applied', server: { vet_name: 'Test Vet' } });
+      const row = await admin.query(`SELECT vet_email FROM dbo.report WHERE report_id = '${op.report_id}'`);
+      expect(row.recordset[0].vet_email).toBe('dev-test-testvet@aderra.test');
+    } finally {
+      delete process.env.TEST_VET_EMAIL;
+    }
+    // Without the setting, the woreda's vet as before.
+    const op = reportOp(farmId, houses[1]!);
+    expect((await run(manager, op))[0]).toMatchObject({ result: 'applied', server: { vet_name: 'Dr. Yonas' } });
+  });
+
   it('keeps a case queued (retryable) when no vet covers the place', async () => {
     // A woreda the development seed gives no vet.
     await admin.query(`
