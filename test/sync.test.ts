@@ -5,7 +5,7 @@ import { adminPool, newIdentity, opId, PLACE } from './setup.js';
 import { closePool, getPool, type sql } from '../src/db/pool.js';
 import { buildMe } from '../src/me.js';
 import { applyBatch } from '../src/ops/apply.js';
-import { ensureUser } from '../src/users.js';
+import { ensureUser, testRole } from '../src/users.js';
 
 let pool: sql.ConnectionPool;
 let admin: sql.ConnectionPool;
@@ -30,6 +30,14 @@ describe('first sign-in', () => {
     const again = await ensureUser(pool, identity, 'en');
     expect(first.user_id).toBe(again.user_id);
     expect(first).toMatchObject({ name: 'Almaz Girma', role: null, language: 'om' });
+  });
+
+  it("gives a test button's account that button's role", () => {
+    expect(testRole('dev-manager-1')).toBe('farm_manager');
+    expect(testRole('dev-farmer-1')).toBe('farmer');
+    expect(testRole('dev-officer-1')).toBe('extension_officer');
+    expect(testRole('dev-test-42')).toBeNull();
+    expect(testRole('108234556')).toBeNull();
   });
 
   it('/me matches the contract for a brand-new user', async () => {

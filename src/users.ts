@@ -74,9 +74,16 @@ async function claimInvite(pool: sql.ConnectionPool, identity: Identity): Promis
   }
 }
 
+/** A test button's role, from its subject (dev-manager-1, dev-farmer-1, dev-officer-1); null for anyone else. */
+export function testRole(subject: string): string | null {
+  const kind = /^dev-(manager|farmer|officer)-/.exec(subject)?.[1];
+  return kind === 'manager' ? 'farm_manager' : kind === 'farmer' ? 'farmer' : kind === 'officer' ? 'extension_officer' : null;
+}
+
 /**
  * The caller's app_user row, created at first sign-in (sign-up and sign-in are
- * one step). The role stays NULL until first run sends user.update.
+ * one step). The role stays NULL until first run sends user.update, except for a
+ * test button, whose role is the button's.
  */
 export async function ensureUser(pool: sql.ConnectionPool, identity: Identity, language: Language): Promise<UserRow> {
   const existing = await find(pool, identity);
@@ -93,8 +100,9 @@ export async function ensureUser(pool: sql.ConnectionPool, identity: Identity, l
       .input('language', sql.Char(2), language)
       // Test-button accounts are test data ('seed'), so they can be told apart and removed.
       .input('origin', sql.VarChar(5), identity.subject.startsWith('dev-') ? 'seed' : 'phone')
+      .input('role', sql.VarChar(20), testRole(identity.subject))
       .query(`INSERT INTO dbo.app_user (identity_provider, identity_subject, name, language, role, origin)
-              VALUES (@provider, @subject, @name, @language, NULL, @origin)`);
+              VALUES (@provider, @subject, @name, @language, @role, @origin)`);
   } catch (error) {
     // Two first requests at once: the other one created the row (uq_app_user_identity).
     if (!(error instanceof sql.RequestError && error.number === 2627)) throw error;
