@@ -27,8 +27,8 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
   const r = await new sql.Request(tx)
     .input('house', sql.UniqueIdentifier, b.house_id)
     .input('farm', sql.UniqueIdentifier, b.farm_id)
-    .query<{ farm_name: string; manager_user_id: string; house_name: string; animal_code: string; produce_code: string | null; active: boolean; kebele_id: number; woreda_id: number }>(`
-      SELECT f.name AS farm_name, f.manager_user_id, h.name AS house_name, h.animal_code, h.produce_code, h.active,
+    .query<{ farm_name: string; manager_user_id: string; house_name: string; animal_code: string; produce_code: string | null; kebele_id: number; woreda_id: number }>(`
+      SELECT f.name AS farm_name, f.manager_user_id, h.name AS house_name, h.animal_code, h.produce_code,
              f.kebele_id, k.woreda_id
       FROM dbo.farm_house h JOIN dbo.farm f ON f.farm_id = h.farm_id JOIN dbo.kebele k ON k.kebele_id = f.kebele_id
       WHERE h.house_id = @house AND h.farm_id = @farm`);
@@ -55,7 +55,6 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
   } else {
     return reject('FORBIDDEN', "You can't do this.");
   }
-  if (!place.active) return reject('HOUSE_INACTIVE', 'This house is no longer in use.');
   return place;
 }
 

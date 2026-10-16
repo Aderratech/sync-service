@@ -127,13 +127,14 @@ describe('report.create', () => {
     expect((await run(farmer, reportOp(farmId, houses[1]!, { reporter_role: 'farmer' })))[0]).toMatchObject({ result: 'rejected', code: 'NOT_ASSIGNED' });
   });
 
-  it('refuses a removed farmer and a house no longer in use', async () => {
+  it('refuses a removed farmer, and takes cases for every house', async () => {
     const { manager, farmId, houses } = await farmWithHouses();
     const farmer = await farmerOn(farmId, manager, houses);
     await run(manager, { op: 'member.remove', op_id: opId(), body: { farm_id: farmId, user_id: farmer.user_id } });
     expect((await run(farmer, reportOp(farmId, houses[0]!)))[0]).toMatchObject({ result: 'rejected', code: 'NOT_MEMBER' });
+    // Houses are no longer switched off; one marked "not in use" by an older app still takes cases.
     await run(manager, { op: 'house.update', op_id: opId(), house_id: houses[1], body: { active: false } });
-    expect((await run(manager, reportOp(farmId, houses[1]!)))[0]).toMatchObject({ result: 'rejected', code: 'HOUSE_INACTIVE' });
+    expect((await run(manager, reportOp(farmId, houses[1]!)))[0]!.result).toBe('applied');
   });
 
   it("keeps location off and accepts no media when the owner said no", async () => {
