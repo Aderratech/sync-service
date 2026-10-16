@@ -7,7 +7,7 @@ import { buildChanges } from '../src/changes.js';
 import { buildMe } from '../src/me.js';
 import { officerFarms } from '../src/officer.js';
 import { applyBatch } from '../src/ops/apply.js';
-import { ensureUser, type UserRow } from '../src/users.js';
+import { ensureUser, getUser, type UserRow } from '../src/users.js';
 
 let pool: sql.ConnectionPool;
 let admin: sql.ConnectionPool;
@@ -32,6 +32,7 @@ afterAll(async () => {
     DELETE FROM dbo.email_outbox WHERE farm_id IN (${farms});
     DELETE FROM dbo.farm_invite WHERE farm_id IN (${farms});
     DELETE FROM dbo.officer_farm WHERE farm_id IN (${farms}) OR officer_user_id IN (${users});
+    DELETE FROM dbo.officer_woreda WHERE officer_user_id IN (${users});
     DELETE FROM dbo.farm_member_house WHERE farm_id IN (${farms});
     DELETE FROM dbo.farm_member WHERE farm_id IN (${farms}) OR user_id IN (${users});
     DELETE FROM dbo.farm_house WHERE farm_id IN (${farms});
@@ -143,7 +144,7 @@ describe('an officer registers a farm with its case', () => {
     expect(officerEdit[0]).toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
   });
 
-  it('makes someone already on Aderra without a farm the manager straight away', async () => {
+  it('makes a farm manager already on Aderra the manager straight away, even of a second farm', async () => {
     const email = testEmail();
     const identity = { ...newIdentity('Hana Bekele'), email };
     const person = await ensureUser(pool, identity, 'en');
@@ -154,7 +155,22 @@ describe('an officer registers a farm with its case', () => {
     expect(after.role).toBe('farm_manager');
     expect((await buildMe(pool, after)).farm?.farm_id).toBe(r.farmId);
     const second = registerOp(email);
-    expect((await run(await officer(), second.op))[0]).toMatchObject({ result: 'rejected', code: 'EMAIL_HAS_FARM' });
+    expect((await run(await officer(), second.op))[0]!.result).toBe('applied');
+    expect((await buildMe(pool, after)).farms!.map((f) => f.farm_id).sort()).toEqual([r.farmId, second.farmId].sort());
+  });
+
+  it('covers every woreda on his list, keeping the first on his profile', async () => {
+    const me = await officer(1001);
+    expect((await run(me, registerOp(testEmail()).op))[0]).toMatchObject({ result: 'rejected', code: 'OUTSIDE_WOREDA' });
+    await run(me, { op: 'user.update', op_id: opId(), body: { woreda_ids: [1001, PLACE.woreda] } });
+    const now = await getUser(pool, me.user_id);
+    expect((await buildMe(pool, now)).user).toMatchObject({ woreda_id: 1001, woreda_ids: [1001, PLACE.woreda] });
+    const r = registerOp(testEmail());
+    expect((await run(now, r.op, caseOp(r.farmId, r.houseId))).map((x) => x.result)).toEqual(['applied', 'applied']);
+    const found = await officerFarms(pool, now, r.name.slice(0, 12));
+    expect(found.farms.map((f) => f.farm_id)).toContain(r.farmId);
+    await run(now, { op: 'user.update', op_id: opId(), body: { woreda_ids: [1001] } });
+    expect((await run(now, registerOp(testEmail()).op))[0]).toMatchObject({ result: 'rejected', code: 'OUTSIDE_WOREDA' });
   });
 
   it('refuses a farm outside his woreda, and anyone but an officer', async () => {

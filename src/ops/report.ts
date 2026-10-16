@@ -1,6 +1,7 @@
 import type { Operation } from '@aderratech/contracts/sync';
 import { sql } from '../db/pool.js';
 import { notify } from '../notify.js';
+import { woredasOf } from '../me.js';
 import type { UserRow } from '../users.js';
 import { applied, reject, type Outcome } from './outcome.js';
 
@@ -50,7 +51,7 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
     if (member?.state !== 'active') return reject('NOT_MEMBER', 'You are no longer a member of this farm.');
     if (!member.assigned) return reject('NOT_ASSIGNED', 'You are not assigned to this house.');
   } else if (user.role === 'extension_officer') {
-    if (user.woreda_id !== place.woreda_id) return reject('OUTSIDE_WOREDA', 'This farm is outside your woreda.');
+    if (!(await woredasOf(tx, user)).includes(place.woreda_id)) return reject('OUTSIDE_WOREDA', 'This farm is outside your woredas.');
   } else {
     return reject('FORBIDDEN', "You can't do this.");
   }

@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import type { Operation } from '@aderratech/contracts/sync';
 import { sql } from '../db/pool.js';
+import { woredasOf } from '../me.js';
 import type { UserRow } from '../users.js';
 import { applied, reject, type Outcome } from './outcome.js';
 
@@ -66,10 +67,6 @@ async function farmCode(tx: sql.Transaction, farmId: string): Promise<string> {
 
 export async function farmCreate(tx: sql.Transaction, user: UserRow, op: Op<'farm.create'>): Promise<Outcome> {
   if (user.role !== 'farm_manager') return reject('FORBIDDEN', 'Only a farm manager can create a farm.');
-  const existing = await new sql.Request(tx).input('user', sql.UniqueIdentifier, user.user_id)
-    .query('SELECT 1 AS x FROM dbo.farm WHERE manager_user_id = @user');
-  if (existing.recordset.length) return reject('ALREADY_HAS_FARM', 'You already manage a farm.');
-
   const joinCode = await insertFarm(tx, op.farm_id, op.body, user.user_id);
   await addManagerMember(tx, op.farm_id, user.user_id, user.user_id);
   return applied({ farm_code: await farmCode(tx, op.farm_id), join_code: joinCode });
@@ -80,8 +77,8 @@ export const inviteSubject = (email: string) => `invite:${email.trim().toLowerCa
 
 /**
  * farm.register (§16 D2): an extension officer adds a farm that is not on Aderra, with exactly one house,
- * for the case that follows it in the outbox. The manager is whoever holds the email: someone already on
- * Aderra without a farm, or else a placeholder user that they receive when they first sign in with that
+ * for the case that follows it in the outbox. The manager is whoever holds the email: a farm manager already
+ * on Aderra (who may manage several farms), or else a placeholder user that they receive when they first sign in with that
  * email (users.ts). The invitation email waits in email_outbox.
  */
 export async function farmRegister(tx: sql.Transaction, user: UserRow, op: Op<'farm.register'>): Promise<Outcome> {
@@ -91,21 +88,18 @@ export async function farmRegister(tx: sql.Transaction, user: UserRow, op: Op<'f
     .query<{ woreda_id: number }>('SELECT woreda_id FROM dbo.kebele WHERE kebele_id = @kebele');
   const woreda = place.recordset[0]?.woreda_id;
   if (woreda === undefined) return reject('INVALID_PAYLOAD', 'This kebele does not exist.');
-  if (woreda !== user.woreda_id) return reject('OUTSIDE_WOREDA', 'This farm is outside your woreda.');
+  if (!(await woredasOf(tx, user)).includes(woreda)) return reject('OUTSIDE_WOREDA', 'This farm is outside your woredas.');
 
   const email = b.manager_email.trim().toLowerCase();
   const holder = await new sql.Request(tx)
     .input('email', sql.NVarChar(320), email)
     .input('subject', sql.NVarChar(256), inviteSubject(email))
-    .query<{ user_id: string; role: string | null; invited: number; manages: number }>(`
-      SELECT TOP 1 u.user_id, u.role,
-             CASE WHEN u.identity_subject = @subject THEN 1 ELSE 0 END AS invited,
-             CASE WHEN EXISTS (SELECT 1 FROM dbo.farm f WHERE f.manager_user_id = u.user_id) THEN 1 ELSE 0 END AS manages
+    .query<{ user_id: string; role: string | null; invited: number }>(`
+      SELECT TOP 1 u.user_id, u.role, CASE WHEN u.identity_subject = @subject THEN 1 ELSE 0 END AS invited
       FROM dbo.app_user u
       WHERE LOWER(u.email) = @email OR u.identity_subject = @subject
       ORDER BY CASE WHEN u.identity_subject = @subject THEN 1 ELSE 0 END`);
   let manager = holder.recordset[0];
-  if (manager?.manages) return reject('EMAIL_HAS_FARM', 'This email already manages a farm on Aderra.');
   if (manager && manager.role !== null && manager.role !== 'farm_manager') {
     return reject('FORBIDDEN', 'This email belongs to someone on Aderra who is not a farm manager.');
   }
@@ -118,7 +112,7 @@ export async function farmRegister(tx: sql.Transaction, user: UserRow, op: Op<'f
         INSERT INTO dbo.app_user (identity_provider, identity_subject, email, name, language, role)
         OUTPUT inserted.user_id
         VALUES ('google', @subject, @email, @email, @language, 'farm_manager')`);
-    manager = { user_id: created.recordset[0]!.user_id, role: 'farm_manager', invited: 1, manages: 0 };
+    manager = { user_id: created.recordset[0]!.user_id, role: 'farm_manager', invited: 1 };
   } else if (manager.role === null) {
     await new sql.Request(tx).input('user', sql.UniqueIdentifier, manager.user_id)
       .query("UPDATE dbo.app_user SET role = 'farm_manager', updated_at = SYSUTCDATETIME() WHERE user_id = @user");

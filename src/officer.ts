@@ -1,5 +1,6 @@
 import type { OfficerFarmsResponse } from '@aderratech/contracts/sync';
 import { sql } from './db/pool.js';
+import { woredasOf } from './me.js';
 import { lc } from './ops/outcome.js';
 import type { UserRow } from './users.js';
 
@@ -11,7 +12,7 @@ const likeContains = (text: string) => `%${text.replace(/[[%_]/g, (c) => `[${c}]
 
 /**
  * An officer's farms (§16 D2): with no query, the farms they report for (assigned, registered or reported
- * for); with a query of 2 or more characters, up to 10 farms in their woreda whose name contains it, so they
+ * for); with a query of 2 or more characters, up to 10 farms in their woredas whose name contains it, so they
  * find a farm before registering it again.
  */
 export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, query: string): Promise<OfficerFarmsResponse> {
@@ -24,11 +25,11 @@ export async function officerFarms(pool: sql.ConnectionPool, user: UserRow, quer
               THEN 1 ELSE 0 END AS BIT) AS manager_invited`;
   const farms = await new sql.Request(pool)
     .input('user', sql.UniqueIdentifier, user.user_id)
-    .input('woreda', sql.Int, user.woreda_id)
+    .input('woredas', sql.NVarChar(sql.MAX), JSON.stringify(await woredasOf(pool, user)))
     .input('q', sql.NVarChar(210), likeContains(q))
     .query<FarmRow>(q
       ? `SELECT TOP 10 ${fields} FROM dbo.farm f JOIN dbo.kebele k ON k.kebele_id = f.kebele_id
-         WHERE k.woreda_id = @woreda AND f.name LIKE @q ORDER BY f.name`
+         WHERE k.woreda_id IN (SELECT CAST(value AS INT) FROM OPENJSON(@woredas)) AND f.name LIKE @q ORDER BY f.name`
       : `SELECT ${fields} FROM dbo.farm f
          WHERE EXISTS (SELECT 1 FROM dbo.officer_farm o WHERE o.farm_id = f.farm_id AND o.officer_user_id = @user AND o.removed_at IS NULL)
          ORDER BY f.name`);

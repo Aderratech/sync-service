@@ -69,10 +69,14 @@ describe('farm set-up', () => {
     expect(changes.memberships).toEqual([expect.objectContaining({ user_id: manager.user_id.toLowerCase(), state: 'active' })]);
   });
 
-  it('allows one farm per manager, and only managers create farms', async () => {
-    const { manager } = await managerWithFarm();
-    const second = await run(manager, { op: 'farm.create', op_id: opId(), farm_id: randomUUID(), body: { name: 'Second', kebele_id: KEBELE, lat: null, lon: null, phone: null } });
-    expect(second[0]).toMatchObject({ result: 'rejected', code: 'ALREADY_HAS_FARM' });
+  it('lets a manager run several farms, and only managers create farms', async () => {
+    const { manager, farmId } = await managerWithFarm();
+    const secondId = randomUUID();
+    const second = await run(manager, { op: 'farm.create', op_id: opId(), farm_id: secondId, body: { name: 'Second', kebele_id: KEBELE, lat: null, lon: null, phone: null } });
+    expect(second[0]!.result).toBe('applied');
+    const changes = ChangesResponse.parse(await buildChanges(pool, manager, null));
+    // Managed farms first, then by name.
+    expect(changes.farms!.map((f) => [f.farm_id, f.manages])).toEqual([[farmId, true], [secondId, true]]);
     const notManager = await run(await farmer(), { op: 'farm.create', op_id: opId(), farm_id: randomUUID(), body: { name: 'Mine', kebele_id: KEBELE, lat: null, lon: null, phone: null } });
     expect(notManager[0]).toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
   });
@@ -112,7 +116,7 @@ describe('joining a farm', () => {
     expect(forFarmer.notifications).toContainEqual(expect.objectContaining({ type: 'membership_decided', title: "You're in Sara Poultry" }));
   });
 
-  it('rejects an unknown code, and a second farm for an active farmer', async () => {
+  it('rejects an unknown code, and lets a farmer work on a second farm', async () => {
     const almaz = await farmer();
     expect((await run(almaz, { op: 'member.request', op_id: opId(), body: { join_code: 'ZZZZZZ' } }))[0])
       .toMatchObject({ result: 'rejected', code: 'JOIN_CODE_UNKNOWN' });
@@ -121,8 +125,11 @@ describe('joining a farm', () => {
     const second = await managerWithFarm();
     await run(almaz, { op: 'member.request', op_id: opId(), body: { farm_id: first.farmId } });
     await run(first.manager, { op: 'member.decide', op_id: opId(), body: { farm_id: first.farmId, user_id: almaz.user_id, decision: 'approve' } });
-    expect((await run(almaz, { op: 'member.request', op_id: opId(), body: { farm_id: second.farmId } }))[0])
-      .toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
+    expect((await run(almaz, { op: 'member.request', op_id: opId(), body: { farm_id: second.farmId } }))[0]!.result).toBe('applied');
+    await run(second.manager, { op: 'member.decide', op_id: opId(), body: { farm_id: second.farmId, user_id: almaz.user_id, decision: 'approve' } });
+    const changes = ChangesResponse.parse(await buildChanges(pool, almaz, null));
+    expect(changes.farms!.map((f) => f.farm_id).sort()).toEqual([first.farmId, second.farmId].sort());
+    expect(changes.farms!.every((f) => f.manages === false && f.join_code === null)).toBe(true);
   });
 
   it('removes a farmer, ending their houses without deleting the rows, and can assign houses again later', async () => {
