@@ -141,6 +141,13 @@ export async function reportCreate(tx: sql.Transaction, user: UserRow, op: Repor
   await new sql.Request(tx)
     .input('id', sql.Char(26), op.report_id).input('actor', sql.UniqueIdentifier, user.user_id)
     .query("INSERT INTO dbo.case_event (report_id, actor_user_id, type) VALUES (@id, @actor, 'received')");
+  if (user.role === 'extension_officer' && b.farm_id) {
+    // The farm joins the officer's list, for the next visit (§16 D2).
+    await new sql.Request(tx).input('officer', sql.UniqueIdentifier, user.user_id).input('farm', sql.UniqueIdentifier, b.farm_id)
+      .query(`IF NOT EXISTS (SELECT 1 FROM dbo.officer_farm WHERE officer_user_id = @officer AND farm_id = @farm)
+                INSERT INTO dbo.officer_farm (officer_user_id, farm_id, source) VALUES (@officer, @farm, 'reported')
+              ELSE UPDATE dbo.officer_farm SET removed_at = NULL WHERE officer_user_id = @officer AND farm_id = @farm`);
+  }
   await notify(tx, {
     userId: vet.vet_user_id,
     reportId: op.report_id,

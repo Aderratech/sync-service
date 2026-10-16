@@ -3,7 +3,7 @@ import { Operation, type OpResult, type SyncResponse } from '@aderratech/contrac
 import { z } from 'zod';
 import { sql } from '../db/pool.js';
 import { getUser, type UserRow } from '../users.js';
-import { farmCreate, farmUpdate, houseCreate, houseUpdate } from './farm.js';
+import { farmCreate, farmRegister, farmUpdate, houseCreate, houseUpdate } from './farm.js';
 import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
 import { notificationRead } from './notifications.js';
 import { reportCreate } from './report.js';
@@ -62,6 +62,7 @@ const HANDLERS: Partial<{
   'user.update': userUpdate,
   'device.register': deviceRegister,
   'farm.create': farmCreate,
+  'farm.register': farmRegister,
   'farm.update': farmUpdate,
   'house.create': houseCreate,
   'house.update': houseUpdate,
