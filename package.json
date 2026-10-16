@@ -19,7 +19,7 @@
     "db:interim": "node scripts/fabric-db.mjs"
   },
   "dependencies": {
-    "@aderratech/contracts": "0.6.0",
+    "@aderratech/contracts": "0.7.0",
     "@azure/functions": "4.16.5",
     "@azure/identity": "4.14.0",
     "@azure/storage-file-datalake": "12.31.0",
