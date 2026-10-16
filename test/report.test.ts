@@ -20,6 +20,8 @@ afterAll(async () => {
   const reports = `SELECT report_id FROM dbo.report WHERE reporter_user_id IN (${users})`;
   const farms = `SELECT farm_id FROM dbo.farm WHERE manager_user_id IN (${users})`;
   await admin.query(`
+    DELETE FROM dbo.message_item WHERE message_id IN (SELECT message_id FROM dbo.message WHERE report_id IN (${reports}));
+    DELETE FROM dbo.message WHERE report_id IN (${reports});
     DELETE FROM dbo.notification WHERE report_id IN (${reports}) OR user_id IN (${users});
     DELETE FROM dbo.case_event WHERE report_id IN (${reports});
     DELETE FROM dbo.media WHERE report_id IN (${reports});
@@ -125,13 +127,14 @@ describe('report.create', () => {
     expect((await run(farmer, reportOp(farmId, houses[1]!, { reporter_role: 'farmer' })))[0]).toMatchObject({ result: 'rejected', code: 'NOT_ASSIGNED' });
   });
 
-  it('refuses a removed farmer and a house no longer in use', async () => {
+  it('refuses a removed farmer, and takes cases for every house', async () => {
     const { manager, farmId, houses } = await farmWithHouses();
     const farmer = await farmerOn(farmId, manager, houses);
     await run(manager, { op: 'member.remove', op_id: opId(), body: { farm_id: farmId, user_id: farmer.user_id } });
     expect((await run(farmer, reportOp(farmId, houses[0]!)))[0]).toMatchObject({ result: 'rejected', code: 'NOT_MEMBER' });
+    // Houses are no longer switched off; one marked "not in use" by an older app still takes cases.
     await run(manager, { op: 'house.update', op_id: opId(), house_id: houses[1], body: { active: false } });
-    expect((await run(manager, reportOp(farmId, houses[1]!)))[0]).toMatchObject({ result: 'rejected', code: 'HOUSE_INACTIVE' });
+    expect((await run(manager, reportOp(farmId, houses[1]!)))[0]!.result).toBe('applied');
   });
 
   it("keeps location off and accepts no media when the owner said no", async () => {
@@ -172,6 +175,25 @@ describe('/changes reports', () => {
     expect(changes.reports).toContainEqual(expect.objectContaining({
       report_id: op.report_id, status: 'new', reporter_name: 'Almaz Girma', animal_code: 'chicken',
       onset: '2_3_days', medicine_given: 'no', owner_ok: true, house_id: houses[0],
+    }));
+  });
+
+  it("gives the case's signs and the vet's message with its action points", async () => {
+    const { manager, farmId, houses } = await farmWithHouses();
+    const op = reportOp(farmId, houses[0]!);
+    await run(manager, op);
+    const code = (await admin.query("SELECT TOP 1 code FROM dbo.quick_response WHERE kind = 'recommend' AND active = 1 ORDER BY sort_order")).recordset[0]?.code as string;
+    expect(code).toBeTruthy();
+    const messageId = ulid();
+    await admin.query(`
+      INSERT dbo.message (message_id, report_id, author_user_id, side, text, lang, sent_at)
+      SELECT '${messageId}', report_id, vet_user_id, 'vet', N'Keep the sick birds apart.', 'en', SYSUTCDATETIME() FROM dbo.report WHERE report_id = '${op.report_id}';
+      INSERT dbo.message_item (message_id, seq, quick_response_code) VALUES ('${messageId}', 1, '${code}');`);
+    const changes = ChangesResponse.parse(await buildChanges(pool, manager, null));
+    expect(changes.signs).toContainEqual({ report_id: op.report_id, sign_code: 'coughing', source: 'tapped', removed_at: null });
+    expect(changes.messages).toContainEqual(expect.objectContaining({
+      message_id: messageId, report_id: op.report_id, side: 'vet', author_name: 'Dr. Yonas', text: 'Keep the sick birds apart.',
+      items: [{ seq: 1, quick_response_code: code, done_at: null }], media_ids: [],
     }));
   });
 });

@@ -33,10 +33,6 @@ export async function memberRequest(tx: sql.Transaction, user: UserRow, op: Op<'
   const farm = found.recordset[0];
   if (!farm) return reject('JOIN_CODE_UNKNOWN', 'No farm has this code.');
 
-  const active = await new sql.Request(tx).input('user', sql.UniqueIdentifier, user.user_id)
-    .query<{ farm_id: string }>("SELECT farm_id FROM dbo.farm_member WHERE user_id = @user AND state = 'active'");
-  if (active.recordset.length) return reject('FORBIDDEN', 'You are already a member of a farm.');
-
   await new sql.Request(tx)
     .input('farm', sql.UniqueIdentifier, farm.farm_id)
     .input('user', sql.UniqueIdentifier, user.user_id)

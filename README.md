@@ -41,6 +41,20 @@ App Service authentication only exists in Azure. Locally, with `ADERRA_DEV_AUTH=
 
 From the Android emulator the service is at `http://10.0.2.2:7071`.
 
+## Interim test service (deployed)
+
+A separate test setup, so phones can be tested over any network before the portal's database is shared. Nothing here touches `Aderra_Ops`.
+
+| Piece | Where |
+| --- | --- |
+| Database | `Aderra_Mobile_Interim` (SQL database in Fabric, Unipod workspace), schema and test data from `npm run db:interim -- --interim` |
+| Service | Function App `aderra-sync-interim` (Flex Consumption, Node 22, Central US, resource group `rg-animalhealth`), `https://aderra-sync-interim.azurewebsites.net` |
+| Photos | `Aderra_Lakehouse`, `Files/interim/uploads/{report_id}/{media_id}` (`MEDIA_STORE=onelake`, `MEDIA_FOLDER=interim`) |
+| Access | The app's managed identity: Contributor on the Unipod workspace; `aderra_sync` in `Aderra_Mobile_Interim` |
+| Sign-in | Test users only: `ADERRA_DEV_AUTH=1` with `ADERRA_DEV_AUTH_KEY` (kept out of the repo); every request needs `X-Aderra-Test-Key` |
+
+Deploy: the private contracts package can't be installed in Azure, so build here and upload a package with production dependencies (`npm run build`; copy `dist`, `host.json`, `package*.json`, `.npmrc` to a folder; `npm ci --omit=dev`; zip without `.npmrc`; `az functionapp deployment source config-zip -g rg-animalhealth -n aderra-sync-interim --src <zip>`).
+
 ## Azure (not deployed yet)
 
 - A Function App on the Flex Consumption plan, Node.js 22, with a system-assigned managed identity.

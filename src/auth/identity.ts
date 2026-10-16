@@ -1,4 +1,5 @@
-import { devAuthEnabled } from '../config.js';
+import { timingSafeEqual } from 'node:crypto';
+import { appServiceAuthOn, devAuthEnabled, devAuthKey } from '../config.js';
 
 /** Who is calling, as App Service authentication (or the local dev shim) established it. */
 export type Identity = {
@@ -32,6 +33,7 @@ function claim(principal: ClientPrincipal, types: string[]): string | null {
  * injects X-MS-CLIENT-PRINCIPAL* headers, which callers cannot set themselves.
  */
 function fromAppService(headers: Headers): Identity | null {
+  if (!appServiceAuthOn()) return null;
   const idp = headers.get('x-ms-client-principal-idp');
   const encoded = headers.get('x-ms-client-principal');
   if (idp !== 'google' || !encoded) return null;
@@ -62,6 +64,15 @@ function fromDevToken(headers: Headers): Identity | null {
   };
 }
 
+/** With a test key set (the interim service in Azure), a dev token counts only with the same key. */
+function testKeyMatches(headers: Headers): boolean {
+  const key = devAuthKey();
+  if (!key) return true;
+  const sent = Buffer.from(headers.get('x-aderra-test-key') ?? '');
+  const expected = Buffer.from(key);
+  return sent.length === expected.length && timingSafeEqual(sent, expected);
+}
+
 export function identify(headers: Headers): Identity | null {
-  return fromAppService(headers) ?? (devAuthEnabled() ? fromDevToken(headers) : null);
+  return fromAppService(headers) ?? (devAuthEnabled() && testKeyMatches(headers) ? fromDevToken(headers) : null);
 }

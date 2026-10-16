@@ -1,6 +1,7 @@
 import type { Operation } from '@aderratech/contracts/sync';
 import { sql } from '../db/pool.js';
 import { notify } from '../notify.js';
+import { woredasOf } from '../me.js';
 import type { UserRow } from '../users.js';
 import { applied, reject, type Outcome } from './outcome.js';
 
@@ -8,8 +9,14 @@ type ReportCreate = Extract<Operation, { op: 'report.create' }>;
 
 const same = (a: string | null | undefined, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
 
-/** Media files land at this path in the lakehouse Files area (docs/sync-service.md). */
-export const mediaPath = (reportId: string, mediaId: string) => `Files/global_ingress_uploads/${reportId}/${mediaId}`;
+/**
+ * Media files land at this path in the lakehouse Files area (docs/sync-service.md). The interim test
+ * service keeps them apart under MEDIA_FOLDER (e.g. Files/interim/uploads/…).
+ */
+export const mediaPath = (reportId: string, mediaId: string) => {
+  const folder = process.env.MEDIA_FOLDER?.trim();
+  return folder ? `Files/${folder}/uploads/${reportId}/${mediaId}` : `Files/global_ingress_uploads/${reportId}/${mediaId}`;
+};
 
 type Place = { farm_name: string | null; house_name: string | null; animal_code: string; produce_code: string | null; kebele_id: number; woreda_id: number };
 
@@ -26,8 +33,8 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
   const r = await new sql.Request(tx)
     .input('house', sql.UniqueIdentifier, b.house_id)
     .input('farm', sql.UniqueIdentifier, b.farm_id)
-    .query<{ farm_name: string; manager_user_id: string; house_name: string; animal_code: string; produce_code: string | null; active: boolean; kebele_id: number; woreda_id: number }>(`
-      SELECT f.name AS farm_name, f.manager_user_id, h.name AS house_name, h.animal_code, h.produce_code, h.active,
+    .query<{ farm_name: string; manager_user_id: string; house_name: string; animal_code: string; produce_code: string | null; kebele_id: number; woreda_id: number }>(`
+      SELECT f.name AS farm_name, f.manager_user_id, h.name AS house_name, h.animal_code, h.produce_code,
              f.kebele_id, k.woreda_id
       FROM dbo.farm_house h JOIN dbo.farm f ON f.farm_id = h.farm_id JOIN dbo.kebele k ON k.kebele_id = f.kebele_id
       WHERE h.house_id = @house AND h.farm_id = @farm`);
@@ -50,11 +57,10 @@ async function checkPlace(tx: sql.Transaction, user: UserRow, op: ReportCreate):
     if (member?.state !== 'active') return reject('NOT_MEMBER', 'You are no longer a member of this farm.');
     if (!member.assigned) return reject('NOT_ASSIGNED', 'You are not assigned to this house.');
   } else if (user.role === 'extension_officer') {
-    if (user.woreda_id !== place.woreda_id) return reject('OUTSIDE_WOREDA', 'This farm is outside your woreda.');
+    if (!(await woredasOf(tx, user)).includes(place.woreda_id)) return reject('OUTSIDE_WOREDA', 'This farm is outside your woredas.');
   } else {
     return reject('FORBIDDEN', "You can't do this.");
   }
-  if (!place.active) return reject('HOUSE_INACTIVE', 'This house is no longer in use.');
   return place;
 }
 
@@ -141,6 +147,13 @@ export async function reportCreate(tx: sql.Transaction, user: UserRow, op: Repor
   await new sql.Request(tx)
     .input('id', sql.Char(26), op.report_id).input('actor', sql.UniqueIdentifier, user.user_id)
     .query("INSERT INTO dbo.case_event (report_id, actor_user_id, type) VALUES (@id, @actor, 'received')");
+  if (user.role === 'extension_officer' && b.farm_id) {
+    // The farm joins the officer's list, for the next visit (§16 D2).
+    await new sql.Request(tx).input('officer', sql.UniqueIdentifier, user.user_id).input('farm', sql.UniqueIdentifier, b.farm_id)
+      .query(`IF NOT EXISTS (SELECT 1 FROM dbo.officer_farm WHERE officer_user_id = @officer AND farm_id = @farm)
+                INSERT INTO dbo.officer_farm (officer_user_id, farm_id, source) VALUES (@officer, @farm, 'reported')
+              ELSE UPDATE dbo.officer_farm SET removed_at = NULL WHERE officer_user_id = @officer AND farm_id = @farm`);
+  }
   await notify(tx, {
     userId: vet.vet_user_id,
     reportId: op.report_id,

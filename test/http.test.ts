@@ -10,7 +10,10 @@ const principal = (claims: { typ: string; val: string }[]) =>
 
 afterEach(() => {
   delete process.env.ADERRA_DEV_AUTH;
+  delete process.env.ADERRA_DEV_AUTH_KEY;
   delete process.env.WEBSITE_INSTANCE_ID;
+  delete process.env.WEBSITE_SITE_NAME;
+  delete process.env.WEBSITE_AUTH_ENABLED;
 });
 
 describe('identify', () => {
@@ -34,6 +37,37 @@ describe('identify', () => {
     expect(identify(request)).toMatchObject({ subject: 'dev-manager-1', name: 'Test manager' });
     process.env.WEBSITE_INSTANCE_ID = 'azure-instance';
     expect(identify(request)).toBeNull();
+  });
+
+  it('accepts dev tokens in Azure only with the interim test key', () => {
+    const key = 'k'.repeat(40);
+    const token = devSessionToken({ sub: 'officer-1', name: 'Test officer' });
+    process.env.ADERRA_DEV_AUTH = '1';
+    process.env.WEBSITE_INSTANCE_ID = 'azure-instance';
+    process.env.ADERRA_DEV_AUTH_KEY = key;
+    expect(identify(headers({ 'x-zumo-auth': token }))).toBeNull();
+    expect(identify(headers({ 'x-zumo-auth': token, 'x-aderra-test-key': 'wrong' }))).toBeNull();
+    expect(identify(headers({ 'x-zumo-auth': token, 'x-aderra-test-key': key }))).toMatchObject({ subject: 'dev-officer-1' });
+    // A key too short to be a secret switches test sign-in off.
+    process.env.ADERRA_DEV_AUTH_KEY = 'short';
+    expect(identify(headers({ 'x-zumo-auth': token, 'x-aderra-test-key': 'short' }))).toBeNull();
+  });
+
+  it('ignores App Service headers in Azure while App Service authentication is off', () => {
+    const spoofed = headers({
+      'x-ms-client-principal-idp': 'google',
+      'x-ms-client-principal-id': 'someone-else',
+      'x-ms-client-principal': principal([]),
+    });
+    process.env.WEBSITE_INSTANCE_ID = 'azure-instance';
+    expect(identify(spoofed)).toBeNull();
+    process.env.WEBSITE_AUTH_ENABLED = 'True';
+    expect(identify(spoofed)).toMatchObject({ subject: 'someone-else' });
+    // Flex Consumption may set only the site name.
+    delete process.env.WEBSITE_INSTANCE_ID;
+    delete process.env.WEBSITE_AUTH_ENABLED;
+    process.env.WEBSITE_SITE_NAME = 'aderra-sync-interim';
+    expect(identify(spoofed)).toBeNull();
   });
 });
 

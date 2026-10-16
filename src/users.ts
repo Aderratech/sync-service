@@ -1,6 +1,7 @@
 import { LANGUAGES, type Language } from '@aderratech/contracts';
 import type { Identity } from './auth/identity.js';
 import { sql } from './db/pool.js';
+import { inviteSubject } from './ops/farm.js';
 
 export type UserRow = {
   user_id: string;
@@ -39,12 +40,47 @@ export async function getUser(pool: sql.ConnectionPool, userId: string): Promise
 }
 
 /**
+ * A farm an extension officer registered names its manager by email (ops/farm.ts farmRegister). The first
+ * Google sign-in with that email takes over the placeholder user, so the farm, its houses and its cases are
+ * theirs at once. Returns whether a placeholder was taken over.
+ */
+async function claimInvite(pool: sql.ConnectionPool, identity: Identity): Promise<boolean> {
+  if (identity.provider !== 'google' || !identity.email) return false;
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const r = await new sql.Request(tx)
+      .input('invite', sql.NVarChar(256), inviteSubject(identity.email))
+      .input('subject', sql.NVarChar(256), identity.subject)
+      .input('name', sql.NVarChar(200), identity.name?.trim() || null)
+      .query<{ user_id: string }>(`
+        UPDATE dbo.app_user SET identity_subject = @subject, name = COALESCE(@name, name), updated_at = SYSUTCDATETIME()
+        OUTPUT inserted.user_id
+        WHERE identity_provider = 'google' AND identity_subject = @invite`);
+    const userId = r.recordset[0]?.user_id;
+    if (userId) {
+      await new sql.Request(tx).input('user', sql.UniqueIdentifier, userId)
+        .query('UPDATE dbo.farm_invite SET claimed_at = SYSUTCDATETIME() WHERE invited_user_id = @user AND claimed_at IS NULL');
+    }
+    await tx.commit();
+    return Boolean(userId);
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  }
+}
+
+/**
  * The caller's app_user row, created at first sign-in (sign-up and sign-in are
  * one step). The role stays NULL until first run sends user.update.
  */
 export async function ensureUser(pool: sql.ConnectionPool, identity: Identity, language: Language): Promise<UserRow> {
   const existing = await find(pool, identity);
   if (existing) return existing;
+  if (await claimInvite(pool, identity)) {
+    const claimed = await find(pool, identity);
+    if (claimed) return claimed;
+  }
   try {
     await new sql.Request(pool)
       .input('provider', sql.VarChar(10), identity.provider)

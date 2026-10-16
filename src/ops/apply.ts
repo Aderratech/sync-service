@@ -3,8 +3,9 @@ import { Operation, type OpResult, type SyncResponse } from '@aderratech/contrac
 import { z } from 'zod';
 import { sql } from '../db/pool.js';
 import { getUser, type UserRow } from '../users.js';
-import { farmCreate, farmUpdate, houseCreate, houseUpdate } from './farm.js';
+import { farmCreate, farmRegister, farmUpdate, houseCreate, houseUpdate } from './farm.js';
 import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberRequest } from './membership.js';
+import { mediaConfirm } from './media.js';
 import { notificationRead } from './notifications.js';
 import { reportCreate } from './report.js';
 import { reject, type Outcome } from './outcome.js';
@@ -25,7 +26,20 @@ async function userUpdate(tx: sql.Transaction, user: UserRow, op: Extract<Operat
   if (b.phone !== undefined) { sets.push('phone = @phone'); request.input('phone', sql.VarChar(20), b.phone); }
   if (b.language !== undefined) { sets.push('language = @language'); request.input('language', sql.Char(2), b.language); }
   if (b.role !== undefined && !user.role) { sets.push('role = @role'); request.input('role', sql.VarChar(20), b.role); }
-  if (b.woreda_id !== undefined) { sets.push('woreda_id = @woreda'); request.input('woreda', sql.Int, b.woreda_id); }
+  // An officer's list of woredas replaces the old one; the first is the profile's woreda_id.
+  const woredaId = b.woreda_ids?.[0] ?? b.woreda_id;
+  if (woredaId !== undefined) { sets.push('woreda_id = @woreda'); request.input('woreda', sql.Int, woredaId); }
+  const role = user.role ?? b.role ?? null;
+  if (b.woreda_ids && role === 'extension_officer') {
+    await new sql.Request(tx).input('user', sql.UniqueIdentifier, user.user_id).input('list', sql.NVarChar(sql.MAX), JSON.stringify(b.woreda_ids))
+      .query(`UPDATE dbo.officer_woreda SET removed_at = SYSUTCDATETIME()
+                WHERE officer_user_id = @user AND removed_at IS NULL AND woreda_id NOT IN (SELECT CAST(value AS INT) FROM OPENJSON(@list));
+              UPDATE dbo.officer_woreda SET removed_at = NULL
+                WHERE officer_user_id = @user AND woreda_id IN (SELECT CAST(value AS INT) FROM OPENJSON(@list));
+              INSERT INTO dbo.officer_woreda (officer_user_id, woreda_id)
+                SELECT @user, w.value FROM (SELECT DISTINCT CAST(value AS INT) AS value FROM OPENJSON(@list)) w
+                WHERE NOT EXISTS (SELECT 1 FROM dbo.officer_woreda o WHERE o.officer_user_id = @user AND o.woreda_id = w.value)`);
+  }
   if (b.consent_version !== undefined) {
     sets.push('consent_version = @consent, consent_at = SYSUTCDATETIME()');
     request.input('consent', sql.VarChar(16), b.consent_version);
@@ -62,6 +76,7 @@ const HANDLERS: Partial<{
   'user.update': userUpdate,
   'device.register': deviceRegister,
   'farm.create': farmCreate,
+  'farm.register': farmRegister,
   'farm.update': farmUpdate,
   'house.create': houseCreate,
   'house.update': houseUpdate,
@@ -71,6 +86,7 @@ const HANDLERS: Partial<{
   'member.remove': memberRemove,
   'member.assign_houses': memberAssignHouses,
   'notification.read': notificationRead,
+  'media.confirm': mediaConfirm,
   'report.create': reportCreate,
 };
 
