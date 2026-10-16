@@ -1,7 +1,7 @@
 import type { MeResponse } from '@aderratech/contracts/sync';
 
-/** True when running in Azure (App Service sets this on every instance). */
-export const inAzure = (): boolean => Boolean(process.env.WEBSITE_INSTANCE_ID);
+/** True when running in Azure: App Service (and Flex Consumption) set these on every instance. */
+export const inAzure = (): boolean => Boolean(process.env.WEBSITE_INSTANCE_ID || process.env.WEBSITE_SITE_NAME);
 
 /**
  * Test sign-in: accept "dev:" session tokens instead of App Service authentication. Locally with

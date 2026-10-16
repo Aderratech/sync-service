@@ -12,6 +12,7 @@ afterEach(() => {
   delete process.env.ADERRA_DEV_AUTH;
   delete process.env.ADERRA_DEV_AUTH_KEY;
   delete process.env.WEBSITE_INSTANCE_ID;
+  delete process.env.WEBSITE_SITE_NAME;
   delete process.env.WEBSITE_AUTH_ENABLED;
 });
 
@@ -62,6 +63,11 @@ describe('identify', () => {
     expect(identify(spoofed)).toBeNull();
     process.env.WEBSITE_AUTH_ENABLED = 'True';
     expect(identify(spoofed)).toMatchObject({ subject: 'someone-else' });
+    // Flex Consumption may set only the site name.
+    delete process.env.WEBSITE_INSTANCE_ID;
+    delete process.env.WEBSITE_AUTH_ENABLED;
+    process.env.WEBSITE_SITE_NAME = 'aderra-sync-interim';
+    expect(identify(spoofed)).toBeNull();
   });
 });
 
