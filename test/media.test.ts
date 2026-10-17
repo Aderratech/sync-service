@@ -130,3 +130,30 @@ describe('photos', () => {
     }
   });
 });
+
+describe('Completed (report.done)', () => {
+  it('only records Done before the vet confirms, then completes the confirmed case once', async () => {
+    const { manager, farmer, reportId } = await caseWithPhoto(Buffer.from(`d-${randomUUID()}`));
+    const done = () => ({ op: 'report.done', op_id: opId(), report_id: reportId, body: { tapped_at: now() } });
+    const state = async () => (await admin.request().input('id', reportId)
+      .query<{ status: string; completed_at: Date | null; events: string }>(`SELECT status, completed_at,
+        (SELECT STRING_AGG(type, ',') WITHIN GROUP (ORDER BY at) FROM dbo.case_event WHERE report_id = @id) AS events
+        FROM dbo.report WHERE report_id = @id`)).recordset[0]!;
+
+    expect((await run(farmer, done()))[0]!.result).toBe('applied');
+    expect(await state()).toMatchObject({ status: 'new', completed_at: null, events: 'received,done' });
+
+    await admin.request().input('id', reportId).query("UPDATE dbo.report SET status = 'confirmed', confirmed_code = 'coccidiosis', confirmed_at = SYSUTCDATETIME() WHERE report_id = @id");
+    expect((await run(manager, done()))[0]!.result).toBe('applied');
+    const completed = await state();
+    expect(completed).toMatchObject({ status: 'completed', events: 'received,done,completed' });
+    expect(completed.completed_at).not.toBeNull();
+
+    // Again: nothing more happens.
+    expect((await run(farmer, done()))[0]!.result).toBe('applied');
+    expect((await state()).events).toBe('received,done,completed');
+
+    const stranger = await person('farmer', 'Kebede');
+    expect((await run(stranger, done()))[0]).toMatchObject({ result: 'rejected', code: 'FORBIDDEN' });
+  });
+});

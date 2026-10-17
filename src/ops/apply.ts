@@ -8,6 +8,7 @@ import { memberAssignHouses, memberCancel, memberDecide, memberRemove, memberReq
 import { mediaConfirm } from './media.js';
 import { farmVetRemove, farmVetRequest } from '../vets.js';
 import { notificationRead } from './notifications.js';
+import { reportDone } from './done.js';
 import { reportCreate } from './report.js';
 import { reject, type Outcome } from './outcome.js';
 
@@ -91,6 +92,7 @@ const HANDLERS: Partial<{
   'notification.read': notificationRead,
   'media.confirm': mediaConfirm,
   'report.create': reportCreate,
+  'report.done': reportDone,
 };
 
 // ── Batch ───────────────────────────────────────────────────────────────────

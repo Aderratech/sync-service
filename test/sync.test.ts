@@ -109,7 +109,7 @@ describe('the batch', () => {
 
   it('keeps operations this version cannot apply yet queued (retryable), and remembers nothing', async () => {
     const user = await ensureUser(pool, newIdentity(), 'en');
-    const op = { op: 'report.done', op_id: opId(), report_id: opId(), body: { tapped_at: new Date().toISOString() } };
+    const op = { op: 'action.done', op_id: opId(), report_id: opId(), body: { message_id: opId(), seq: 1, done_at: new Date().toISOString() } };
     const response = await applyBatch(pool, user, [op]);
     expect(response.results[0]).toMatchObject({ result: 'rejected', code: 'SERVER_BUSY' });
     const stored = await admin.query(`SELECT COUNT(*) AS n FROM dbo.sync_op WHERE op_id = '${op.op_id}'`);
